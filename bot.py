@@ -9,10 +9,8 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# --- BOT_TOKEN HARDCODED (Ab 401 Error kabhi nahi aayega!) ---
-BOT_TOKEN = "8566767018:AAG9eRrbAnfJ1v6O1eer7Dvw_AFddoJFzRU"
-
-# Baki keys Render se hi load hongi
+# --- TOKENS DYNAMIC (Ab yeh strictly Render dashboard se fresh token uthayega) ---
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 RENDER_URL = os.getenv("RENDER_URL", "https://anjali-2-cvcf.onrender.com")
