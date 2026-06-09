@@ -11,8 +11,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Logging setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- SECURE TOKENS (Ab koi alert nahi aayega, Render env se chalega) ---
-TOKEN = os.environ.get("TELEGRAM_TOKEN")
+# --- TOKENS UPDATED AS PER YOUR RENDER ENV VAR ---
+TOKEN = os.environ.get("BOT_TOKEN")  # Aapke naye variable naam ke sath match kar diya hai!
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 HF_KEY = os.environ.get("HF_API_KEY")
 
