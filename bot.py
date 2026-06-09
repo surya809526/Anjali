@@ -11,14 +11,11 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Logging setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# --- TOKENS UPDATED AS PER YOUR RENDER ENV VAR ---
-TOKEN = os.environ.get("BOT_TOKEN")  # Aapke naye variable naam ke sath match kar diya hai!
+# --- TOKENS & CONFIGS ---
+TOKEN = os.environ.get("BOT_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 HF_KEY = os.environ.get("HF_API_KEY")
-
-# Aapka Render Base URL
 RENDER_URL = "https://anjali-2-cvcf.onrender.com"
-# ----------------------------------------------------------------------
 
 # Hugging Face Config (SDXL Model)
 HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
@@ -43,11 +40,20 @@ model = genai.GenerativeModel(
     system_instruction=system_instruction
 )
 
-# Flask Application
+# Flask Application Setup
 app = Flask(__name__)
 
-# Telegram Application Setup
-ptb_application = Application.builder().token(TOKEN).build()
+# Main Telegram Application builder (bina instantiate kiye)
+def create_telegram_app():
+    ptb = Application.builder().token(TOKEN).build()
+    
+    # Handlers register karna
+    ptb.add_handler(CommandHandler("start", start))
+    ptb.add_handler(CommandHandler("imagine", imagine_handler))
+    ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
+    return ptb
+
+ptb_application = create_telegram_app()
 
 # --- BOT COMMANDS ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,39 +107,23 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error in Gemini: {e}")
         await update.message.reply_text("Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
 
-# Handlers Registration
-ptb_application.add_handler(CommandHandler("start", start))
-ptb_application.add_handler(CommandHandler("imagine", imagine_handler))
-ptb_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
 
-# --- SERVER LIFECYCLE & WEBHOOK ---
-async def setup_webhook():
-    if not ptb_application.running:
-        await ptb_application.initialize()
-        if RENDER_URL:
-            webhook_url = f"{RENDER_URL}/{TOKEN}"
-            await ptb_application.bot.set_webhook(url=webhook_url)
-            logging.info(f"Webhook connected to: {webhook_url}")
-        await ptb_application.start()
+# --- WEBHOOK ROUTES & LIFECYCLE ---
 
-@app.before_all_requests
-def initialize_bot_service():
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    # Loop setup inside request
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-    
-    if not ptb_application.running:
-        loop.run_until_complete(setup_webhook())
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.get_event_loop()
         
+    # Lazy initialize if somehow skipped at boot
+    if not ptb_application.running:
+        loop.run_until_complete(ptb_application.initialize())
+        loop.run_until_complete(ptb_application.start())
+
     update = Update.de_json(request.get_json(force=True), ptb_application.bot)
     loop.create_task(ptb_application.process_update(update))
     return "OK", 200
@@ -141,3 +131,22 @@ def webhook():
 @app.route("/", methods=["GET"])
 def index():
     return "Anjali Bot is active and fully functional!", 200
+
+# Gunicorn setup hook to initialize Telegram securely
+def create_app():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    logging.info("Initializing Telegram application via secure Factory Pattern...")
+    loop.run_until_complete(ptb_application.initialize())
+    
+    if RENDER_URL:
+        webhook_url = f"{RENDER_URL}/{TOKEN}"
+        loop.run_until_complete(ptb_application.bot.set_webhook(url=webhook_url))
+        logging.info(f"Webhook connected successfully to: {webhook_url}")
+        
+    loop.run_until_complete(ptb_application.start())
+    return app
+
+# Gunicorn target binding
+gunicorn_app = create_app()
