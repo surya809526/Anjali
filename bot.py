@@ -9,8 +9,10 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# --- TOKENS DYNAMIC (Ab yeh strictly Render dashboard se fresh token uthayega) ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# --- APKA FRESH NEW TOKEN HARDCODED ---
+BOT_TOKEN = "8566767018:AAFjOKeJG0y0gNLjKHR7qReetB29MiSVRWc"
+
+# Baki keys Render se hi load hongi
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 RENDER_URL = os.getenv("RENDER_URL", "https://anjali-2-cvcf.onrender.com")
