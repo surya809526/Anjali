@@ -9,8 +9,10 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# --- TOKENS LOADING (Strictly from Render Dashboard) ---
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# --- APKA FRESH NEW TOKEN HARDCODED ---
+BOT_TOKEN = "8566767018:AAFjOKeJG0y0gNLjKHR7qReetB29MiSVRWc"
+
+# Baki keys Render se hi load hongi
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 RENDER_URL = "https://anjali-2-cvcf.onrender.com"
@@ -33,13 +35,15 @@ app = Flask(__name__)
 def home():
     return "Anjali AI Bot Running Perfectly! ❤️"
 
-# Webhook Setup Function
-def configure_bot_webhook():
+# Automate Menu Buttons and Webhook Setup
+@app.route("/setup")
+def setup():
     try:
         bot.remove_webhook()
         webhook_url = f"{RENDER_URL}/webhook"
         bot.set_webhook(url=webhook_url)
         
+        # Bottom menu ke custom buttons set karna
         commands = [
             telebot.types.BotCommand("start", "Anjali ko start karein 🚀"),
             telebot.types.BotCommand("imagine", "AI Images generate karein 🎨"),
@@ -48,11 +52,11 @@ def configure_bot_webhook():
             telebot.types.BotCommand("plan", "Get Unlimited Chat 💎")
         ]
         bot.set_my_commands(commands)
-        logging.info("Webhook and Menu Commands auto-configured successfully!")
+        
+        return f"Webhook and Menu Commands Set Successfully!<br>{webhook_url}"
     except Exception as e:
-        logging.error(f"Error during auto-webhook configuration: {e}")
+        return str(e)
 
-# Fixed Webhook Endpoint
 @app.route("/webhook", methods=["POST"])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
@@ -92,7 +96,8 @@ def generate_image(message):
     try:
         response = requests.post(HF_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
         if response.status_code == 200:
-            image_file = io.BytesIO(response.content)
+            image_bytes = response.content
+            image_file = io.BytesIO(image_bytes)
             image_file.name = 'anjali_generation.png'
             bot.send_photo(message.chat.id, image_file, caption=f"Aapki image taiyar hai! ✨\nPrompt: {prompt}")
             bot.delete_message(message.chat.id, status_msg.message_id)
@@ -115,9 +120,6 @@ def echo_all(message):
     except Exception as e:
         logging.error(f"Error in Gemini Chat: {e}")
         bot.send_message(chat_id, "Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
-
-# Gunicorn setup automatic run trigger
-configure_bot_webhook()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
