@@ -10,7 +10,7 @@ RENDER_URL = os.getenv("RENDER_URL")
 
 # Gemini Setup
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
+model = genai.GenerativeModel("gemini-2.0-flash")
 
 # Telegram Bot
 bot = telebot.TeleBot(BOT_TOKEN)
