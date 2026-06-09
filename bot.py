@@ -9,7 +9,7 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# --- CLEAN & SECURE TOKENS (Strictly loading from Render Dashboard) ---
+# --- TOKENS LOADING (Strictly from Render Dashboard) ---
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
@@ -33,12 +33,13 @@ app = Flask(__name__)
 def home():
     return "Anjali AI Bot Running Perfectly! ❤️"
 
-# Automate Menu Buttons and Webhook Setup
+# Webhook Setup Route (Fixed Path Setup)
 @app.route("/setup")
 def setup():
     try:
         bot.remove_webhook()
-        webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
+        # Fixed webhook URL pattern for high stability
+        webhook_url = f"{RENDER_URL}/webhook"
         bot.set_webhook(url=webhook_url)
         
         # Bottom menu ke custom buttons set karna
@@ -55,7 +56,8 @@ def setup():
     except Exception as e:
         return str(e)
 
-@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+# Fixed Webhook Endpoint (Ab messages kabhi miss nahi honge)
+@app.route("/webhook", methods=["POST"])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
         json_string = request.get_data().decode('utf-8')
