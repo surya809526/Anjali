@@ -11,11 +11,14 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 # Logging setup
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-# Environment Variables
+# --- SECURE TOKENS (Ab koi alert nahi aayega, Render env se chalega) ---
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
 HF_KEY = os.environ.get("HF_API_KEY")
-RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL")
+
+# Aapka Render Base URL
+RENDER_URL = "https://anjali-2-cvcf.onrender.com"
+# ----------------------------------------------------------------------
 
 # Hugging Face Config (SDXL Model)
 HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
@@ -47,11 +50,10 @@ app = Flask(__name__)
 ptb_application = Application.builder().token(TOKEN).build()
 
 # --- BOT COMMANDS ---
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     commands = [
         BotCommand("start", "Anjali ko start karein 🚀"),
-        BotCommand("imagine", "AI Images generate karein 🎨 (/imagine a cute cat)"),
+        BotCommand("imagine", "AI Images generate karein 🎨"),
         BotCommand("profile", "Apna profile dekhein 👤"),
         BotCommand("daily", "Claim Daily Coins 🎁"),
         BotCommand("plan", "Get Unlimited Chat 💎")
@@ -67,37 +69,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(welcome_text)
 
 async def imagine_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check agar user ne prompt diya hai ya nahi
     if not context.args:
-        await update.message.reply_text("Bhai, prompt toh do! Jaise: `/imagine a futuristic city, 8k resolution, cinematic lighting` 🥺")
+        await update.message.reply_text("Bhai, prompt toh do! Jaise: `/imagine a cute cat` 🥺")
         return
 
     prompt = " ".join(context.args)
     status_message = await update.message.reply_text("Anjali aapke liye image generate kar rahi hai... Please thoda wait karein 🎨✨")
 
     try:
-        # Hugging Face API Request
         response = requests.post(HF_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
-        
         if response.status_code == 200:
-            # Image bytes ko memory mein rakh kar Telegram par send karna
-            image_bytes = response.content
-            image_file = io.BytesIO(image_bytes)
+            image_file = io.BytesIO(response.content)
             image_file.name = 'anjali_generation.png'
-            
             await context.bot.send_photo(chat_id=update.effective_chat.id, photo=image_file, caption=f"Aapki image taiyar hai! ✨\nPrompt: *{prompt}*", parse_mode="Markdown")
             await status_message.delete()
         else:
-            logging.error(f"HF Error: {response.status_code} - {response.text}")
-            # Agar model load ho raha ho (Hugging Face pe cold start hota hai kabhi-kabhi)
             if "loading" in response.text:
                 await status_message.edit_text("Hugging Face ka model abhi ready ho raha hai, please 1 minute baad fir se try kijiye na? 🥺")
             else:
                 await status_message.edit_text("Oops! Image generate nahi ho payi. Ek baar phir se try karenge? 💔")
-                
     except Exception as e:
         logging.error(f"Error in Imagine: {e}")
-        await status_message.edit_text("Kuch toh gadbad hui image banane mein. Please thoda der baad try karein!")
+        await status_message.edit_text("Kuch toh gadbad hui image banane mein.")
 
 async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
@@ -106,7 +99,7 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response.text)
     except Exception as e:
         logging.error(f"Error in Gemini: {e}")
-        await update.message.reply_text("Sorry, thoda network issue hai shayad. Ek baar phir se boliye na? 🥺")
+        await update.message.reply_text("Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
 
 # Handlers Registration
 ptb_application.add_handler(CommandHandler("start", start))
@@ -114,8 +107,6 @@ ptb_application.add_handler(CommandHandler("imagine", imagine_handler))
 ptb_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
 
 # --- SERVER LIFECYCLE & WEBHOOK ---
-
-# Secure startup sequence
 async def setup_webhook():
     if not ptb_application.running:
         await ptb_application.initialize()
@@ -125,9 +116,8 @@ async def setup_webhook():
             logging.info(f"Webhook connected to: {webhook_url}")
         await ptb_application.start()
 
-# Flask startup trigger
 @app.before_all_requests
-def run_init_once():
+def initialize_bot_service():
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
