@@ -9,8 +9,10 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# Environment Variables (Render se automatically uthayega)
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# --- BOT_TOKEN HARDCODED (Ab 401 Error kabhi nahi aayega!) ---
+BOT_TOKEN = "8566767018:AAG9eRrbAnfJ1v6O1eer7Dvw_AFddoJFzRU"
+
+# Baki keys Render se hi load hongi
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 RENDER_URL = os.getenv("RENDER_URL", "https://anjali-2-cvcf.onrender.com")
@@ -86,7 +88,6 @@ Bataiye, aaj main aapki kya madad karoon? 😊"""
 # Imagine Command Handler (AI Image Generation)
 @bot.message_handler(commands=['imagine'])
 def generate_image(message):
-    # Prompt check karna
     prompt = message.text.replace('/imagine', '').strip()
     if not prompt:
         bot.reply_to(message, "Bhai, prompt toh do! Jaise: `/imagine a beautiful cinematic sunset` 🥺")
@@ -95,7 +96,6 @@ def generate_image(message):
     status_msg = bot.reply_to(message, "Anjali aapke liye image generate kar rahi hai... Please thoda wait karein 🎨✨")
     
     try:
-        # Hugging Face API hit karna
         response = requests.post(HF_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
         
         if response.status_code == 200:
@@ -103,7 +103,6 @@ def generate_image(message):
             image_file = io.BytesIO(image_bytes)
             image_file.name = 'anjali_generation.png'
             
-            # Send photo to Telegram
             bot.send_photo(
                 message.chat.id, 
                 image_file, 
@@ -125,7 +124,6 @@ def echo_all(message):
     text = message.text or ""
     chat_id = message.chat.id
     
-    # Female persona framework set karna
     prompt = f"""
 Tum Anjali naam ki ek friendly female AI assistant ho.
 
@@ -152,6 +150,5 @@ User:
         logging.error(f"Error in Gemini Chat: {e}")
         bot.send_message(chat_id, "Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
 
-# Gunicorn start setup ke liye target app
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
