@@ -36,7 +36,7 @@ model = genai.GenerativeModel(
 # Flask Application
 app = Flask(__name__)
 
-# Telegram Application global object
+# Telegram Application initialize (bina loop block kiye)
 ptb_application = Application.builder().token(TOKEN).build()
 
 # Commands & Handlers
@@ -70,30 +70,36 @@ async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 ptb_application.add_handler(CommandHandler("start", start))
 ptb_application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
 
-# Webhook initialization logic as per v20+ standard
-async def setup_webhook():
-    await ptb_application.initialize()
-    if RENDER_URL:
-        webhook_url = f"{RENDER_URL}/{TOKEN}"
-        await ptb_application.bot.set_webhook(url=webhook_url)
-        logging.info(f"Webhook securely set to {webhook_url}")
-    await ptb_application.start()
-
-# Sync wrapper for initialization
-try:
-    loop = asyncio.get_event_loop()
-except RuntimeError:
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-loop.run_until_complete(setup_webhook())
+# Flask context ke andar async init script
+@app.before_all_requests
+def initialize_bot_service():
+    """Ensure bot is initialized once inside Gunicorn's worker context"""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+    if not ptb_application.updater and not ptb_application.running:
+        logging.info("Initializing Telegram Bot Application securely...")
+        loop.run_until_complete(ptb_application.initialize())
+        if RENDER_URL:
+            webhook_url = f"{RENDER_URL}/{TOKEN}"
+            loop.run_until_complete(ptb_application.bot.set_webhook(url=webhook_url))
+            logging.info(f"Webhook set successfully to {webhook_url}")
+        loop.run_until_complete(ptb_application.start())
 
 # Flask Routes
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     if ptb_application:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = asyncio.get_event_loop()
+            
         update = Update.de_json(request.get_json(force=True), ptb_application.bot)
-        ptb_application.create_task(ptb_application.process_update(update))
+        loop.create_task(ptb_application.process_update(update))
     return "OK", 200
 
 @app.route("/", methods=["GET"])
