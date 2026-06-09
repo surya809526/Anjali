@@ -1,152 +1,157 @@
 import os
-import logging
-import asyncio
 import io
+import logging
 import requests
 from flask import Flask, request
+import telebot
 import google.generativeai as genai
-from telegram import Update, BotCommand
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Logging setup
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
+# Logging setup for Render logs
+logging.basicConfig(level=logging.INFO)
 
-# --- TOKENS & CONFIGS ---
-TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
-HF_KEY = os.environ.get("HF_API_KEY")
-RENDER_URL = "https://anjali-2-cvcf.onrender.com"
+# Environment Variables (Render se automatically uthayega)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+HF_API_KEY = os.getenv("HF_API_KEY")
+RENDER_URL = os.getenv("RENDER_URL", "https://anjali-2-cvcf.onrender.com")
 
-# Hugging Face Config (SDXL Model)
+# Gemini Setup
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-1.5-flash")
+
+# Hugging Face Setup (For AI Images)
 HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-headers = {"Authorization": f"Bearer {HF_KEY}"}
+headers = {"Authorization": f"Bearer {HF_API_KEY}"}
 
-# Gemini AI Setup
-genai.configure(api_key=GEMINI_KEY)
-generation_config = {
-    "temperature": 0.7,
-    "top_p": 0.95,
-    "top_k": 64,
-    "max_output_tokens": 8192,
-}
-system_instruction = (
-    "Aapka naam Anjali hai. Aap ek bohot hi pyaari, samajhdar aur helpful female AI assistant ho. "
-    "Aap user se bohot acche aur affectionate tareeke se baat karti ho. Aapka kaam user ke liye coding karna, "
-    "pyaari aur gehri shayaris likhna, aur unke har sawaal ka jawab dena hai. Hamesha friendly aur polite raho."
-)
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    generation_config=generation_config,
-    system_instruction=system_instruction
-)
+# Telegram Bot Instance
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# Flask Application Setup
+# Flask App
 app = Flask(__name__)
 
-# Main Telegram Application builder (bina instantiate kiye)
-def create_telegram_app():
-    ptb = Application.builder().token(TOKEN).build()
-    
-    # Handlers register karna
-    ptb.add_handler(CommandHandler("start", start))
-    ptb.add_handler(CommandHandler("imagine", imagine_handler))
-    ptb.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_handler))
-    return ptb
+@app.route("/")
+def home():
+    return "Anjali AI Bot Running Perfectly! ❤️"
 
-ptb_application = create_telegram_app()
-
-# --- BOT COMMANDS ---
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    commands = [
-        BotCommand("start", "Anjali ko start karein 🚀"),
-        BotCommand("imagine", "AI Images generate karein 🎨"),
-        BotCommand("profile", "Apna profile dekhein 👤"),
-        BotCommand("daily", "Claim Daily Coins 🎁"),
-        BotCommand("plan", "Get Unlimited Chat 💎")
-    ]
-    await context.bot.set_my_commands(commands)
-    
-    welcome_text = (
-        "Hello! Main hoon Anjali. ✨\n\n"
-        "Main aapki baatein sunne, aapke liye badiya coding karne aur pyaari shayaris likhne ke liye taiyar hoon. "
-        "Agar aapko koi AI image banwani hai, toh `/imagine` command ka use karein!\n\n"
-        "Bataiye, aaj main aapki kya madad karoon? 💖"
-    )
-    await update.message.reply_text(welcome_text)
-
-async def imagine_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Bhai, prompt toh do! Jaise: `/imagine a cute cat` 🥺")
-        return
-
-    prompt = " ".join(context.args)
-    status_message = await update.message.reply_text("Anjali aapke liye image generate kar rahi hai... Please thoda wait karein 🎨✨")
-
+# Automate Menu Buttons and Webhook Setup
+@app.route("/setup")
+def setup():
     try:
+        bot.remove_webhook()
+        webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
+        bot.set_webhook(url=webhook_url)
+        
+        # Bottom menu ke custom buttons set karna
+        commands = [
+            telebot.types.BotCommand("start", "Anjali ko start karein 🚀"),
+            telebot.types.BotCommand("imagine", "AI Images generate karein 🎨"),
+            telebot.types.BotCommand("profile", "Apna profile dekhein 👤"),
+            telebot.types.BotCommand("daily", "Claim Daily Coins 🎁"),
+            telebot.types.BotCommand("plan", "Get Unlimited Chat 💎")
+        ]
+        bot.set_my_commands(commands)
+        
+        return f"Webhook and Menu Commands Set Successfully!<br>{webhook_url}"
+    except Exception as e:
+        return str(e)
+
+@app.route(f"/{BOT_TOKEN}", methods=["POST"])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return "OK", 200
+    else:
+        return "Unsupported Media Type", 403
+
+# --- TELEGRAM BOT HANDLERS ---
+
+# Start Command Handler
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    welcome_text = """👋 Hello!
+
+Main Anjali hoon 💖
+
+✨ Main kya kar sakti hoon?
+💻 Coding Help
+📝 Shayari
+🎨 AI Image Generation (/imagine)
+🤖 AI Chat
+
+Bataiye, aaj main aapki kya madad karoon? 😊"""
+    bot.reply_to(message, welcome_text)
+
+# Imagine Command Handler (AI Image Generation)
+@bot.message_handler(commands=['imagine'])
+def generate_image(message):
+    # Prompt check karna
+    prompt = message.text.replace('/imagine', '').strip()
+    if not prompt:
+        bot.reply_to(message, "Bhai, prompt toh do! Jaise: `/imagine a beautiful cinematic sunset` 🥺")
+        return
+    
+    status_msg = bot.reply_to(message, "Anjali aapke liye image generate kar rahi hai... Please thoda wait karein 🎨✨")
+    
+    try:
+        # Hugging Face API hit karna
         response = requests.post(HF_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
+        
         if response.status_code == 200:
-            image_file = io.BytesIO(response.content)
+            image_bytes = response.content
+            image_file = io.BytesIO(image_bytes)
             image_file.name = 'anjali_generation.png'
-            await context.bot.send_photo(chat_id=update.effective_chat.id, photo=image_file, caption=f"Aapki image taiyar hai! ✨\nPrompt: *{prompt}*", parse_mode="Markdown")
-            await status_message.delete()
+            
+            # Send photo to Telegram
+            bot.send_photo(
+                message.chat.id, 
+                image_file, 
+                caption=f"Aapki image taiyar hai! ✨\nPrompt: {prompt}"
+            )
+            bot.delete_message(message.chat.id, status_msg.message_id)
         else:
             if "loading" in response.text:
-                await status_message.edit_text("Hugging Face ka model abhi ready ho raha hai, please 1 minute baad fir se try kijiye na? 🥺")
+                bot.edit_message_text("Hugging Face ka model abhi ready ho raha hai, please 1 minute baad fir se try kijiye na? 🥺", message.chat.id, status_msg.message_id)
             else:
-                await status_message.edit_text("Oops! Image generate nahi ho payi. Ek baar phir se try karenge? 💔")
+                bot.edit_message_text("Oops! Image generate nahi ho payi. Ek baar phir se try karenge? 💔", message.chat.id, status_msg.message_id)
     except Exception as e:
         logging.error(f"Error in Imagine: {e}")
-        await status_message.edit_text("Kuch toh gadbad hui image banane mein.")
+        bot.edit_message_text("Kuch toh gadbad hui image banane mein. Thoda der baad try karein!", message.chat.id, status_msg.message_id)
 
-async def chat_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_message = update.message.text
+# AI Chat Handler (For Text, Coding & Shayari)
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    text = message.text or ""
+    chat_id = message.chat.id
+    
+    # Female persona framework set karna
+    prompt = f"""
+Tum Anjali naam ki ek friendly female AI assistant ho.
+
+Rules:
+- Hindi aur English dono mein baat karo (Hinglish prefer karo).
+- Coding expert ho, user mange toh saaf code likho.
+- Shayari aur stories bohot badiya aur gehri likhti ho.
+- Friendly, cute aur respectful ho.
+- Short aur useful replies do.
+
+User:
+{text}
+"""
     try:
-        response = model.generate_content(user_message)
-        await update.message.reply_text(response.text)
+        response = model.generate_content(prompt)
+        answer = getattr(response, "text", "Response generate nahi hua.")
+        
+        if not answer:
+            answer = "Response generate nahi hua."
+            
+        bot.send_message(chat_id, answer[:4000])
+        
     except Exception as e:
-        logging.error(f"Error in Gemini: {e}")
-        await update.message.reply_text("Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
+        logging.error(f"Error in Gemini Chat: {e}")
+        bot.send_message(chat_id, "Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
 
-
-# --- WEBHOOK ROUTES & LIFECYCLE ---
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    # Loop setup inside request
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-    # Lazy initialize if somehow skipped at boot
-    if not ptb_application.running:
-        loop.run_until_complete(ptb_application.initialize())
-        loop.run_until_complete(ptb_application.start())
-
-    update = Update.de_json(request.get_json(force=True), ptb_application.bot)
-    loop.create_task(ptb_application.process_update(update))
-    return "OK", 200
-
-@app.route("/", methods=["GET"])
-def index():
-    return "Anjali Bot is active and fully functional!", 200
-
-# Gunicorn setup hook to initialize Telegram securely
-def create_app():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    logging.info("Initializing Telegram application via secure Factory Pattern...")
-    loop.run_until_complete(ptb_application.initialize())
-    
-    if RENDER_URL:
-        webhook_url = f"{RENDER_URL}/{TOKEN}"
-        loop.run_until_complete(ptb_application.bot.set_webhook(url=webhook_url))
-        logging.info(f"Webhook connected successfully to: {webhook_url}")
-        
-    loop.run_until_complete(ptb_application.start())
-    return app
-
-# Gunicorn target binding
-gunicorn_app = create_app()
+# Gunicorn start setup ke liye target app
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
