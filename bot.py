@@ -9,12 +9,10 @@ import google.generativeai as genai
 # Logging setup for Render logs
 logging.basicConfig(level=logging.INFO)
 
-# --- APKA FRESH NEW TOKEN HARDCODED ---
+# --- ALL KEY CONFIGURATIONS HARDCODED (Absolute Stability) ---
 BOT_TOKEN = "8566767018:AAFjOKeJG0y0gNLjKHR7qReetB29MiSVRWc"
-
-# Baki keys Render se hi load hongi
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-HF_API_KEY = os.getenv("HF_API_KEY")
+GEMINI_API_KEY = "AIzaSyDG4RvlLGgqYTerYGInGlEUa3lPkz4UAak"
+HF_API_KEY = "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"
 RENDER_URL = "https://anjali-2-cvcf.onrender.com"
 
 # Gemini Setup
@@ -35,7 +33,7 @@ app = Flask(__name__)
 def home():
     return "Anjali AI Bot Running Perfectly! ❤️"
 
-# Automate Menu Buttons and Webhook Setup
+# Webhook and Menu Setup
 @app.route("/setup")
 def setup():
     try:
@@ -43,7 +41,6 @@ def setup():
         webhook_url = f"{RENDER_URL}/webhook"
         bot.set_webhook(url=webhook_url)
         
-        # Bottom menu ke custom buttons set karna
         commands = [
             telebot.types.BotCommand("start", "Anjali ko start karein 🚀"),
             telebot.types.BotCommand("imagine", "AI Images generate karein 🎨"),
@@ -57,6 +54,7 @@ def setup():
     except Exception as e:
         return str(e)
 
+# Webhook Endpoint
 @app.route("/webhook", methods=["POST"])
 def webhook():
     if request.headers.get('content-type') == 'application/json':
