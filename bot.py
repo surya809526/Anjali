@@ -1,26 +1,17 @@
 import os
 from flask import Flask, request
 import telebot
-import google.generativeai as genai
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 RENDER_URL = os.getenv("RENDER_URL")
 
 if not BOT_TOKEN:
     raise Exception("BOT_TOKEN not found!")
 
-if not GEMINI_API_KEY:
-    raise Exception("GEMINI_API_KEY not found!")
-
 if not RENDER_URL:
     raise Exception("RENDER_URL not found!")
 
 bot = telebot.TeleBot(BOT_TOKEN)
-
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
-
 app = Flask(__name__)
 
 @app.route("/")
@@ -31,15 +22,16 @@ def home():
 def setup():
     try:
         bot.remove_webhook()
+
         webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
 
         result = bot.set_webhook(url=webhook_url)
 
-        print("WEBHOOK RESULT:", result)
-        print("WEBHOOK URL:", webhook_url)
-
-        return f"Webhook Set Successfully!<br>{webhook_url}"
-
+        return f"""
+Webhook Set Successfully<br>
+Result: {result}<br>
+URL: {webhook_url}
+"""
     except Exception as e:
         return str(e)
 
@@ -49,77 +41,45 @@ def webhook():
     print("🔥 MESSAGE RECEIVED FROM TELEGRAM")
 
     try:
+
         json_string = request.get_data().decode("utf-8")
 
-        print("UPDATE:")
         print(json_string)
 
         update = telebot.types.Update.de_json(json_string)
 
-        bot.process_new_updates([update])
+        if update.message:
+
+            chat_id = update.message.chat.id
+            text = update.message.text
+
+            print("CHAT ID:", chat_id)
+            print("MESSAGE:", text)
+
+            if text == "/start":
+
+                bot.send_message(
+                    chat_id,
+                    "👋 Hello! Main tumhari AI Assistant hoon 💖"
+                )
+
+            else:
+
+                bot.send_message(
+                    chat_id,
+                    f"✅ Webhook Working\n\nTumne likha: {text}"
+                )
 
         return "OK", 200
 
     except Exception as e:
 
-        print("WEBHOOK ERROR:", str(e))
+        print("ERROR:", str(e))
 
         return str(e), 500
 
-
-@bot.message_handler(commands=["start"])
-def start(message):
-
-    print("START COMMAND RECEIVED")
-
-    bot.reply_to(
-        message,
-        """👋 Hello!
-
-Main tumhari AI Assistant hoon 💖
-
-💻 Coding
-📝 Shayari
-🤖 AI Chat
-
-Mujhe kuch bhi poochho!
-"""
-    )
-
-
-@bot.message_handler(func=lambda message: True)
-def chat(message):
-
-    print("USER MESSAGE:", message.text)
-
-    try:
-
-        response = model.generate_content(message.text)
-
-        if hasattr(response, "text") and response.text:
-
-            bot.reply_to(message, response.text)
-
-        else:
-
-            bot.reply_to(
-                message,
-                "Response generate nahi hua."
-            )
-
-    except Exception as e:
-
-        print("GEMINI ERROR:", str(e))
-
-        bot.reply_to(
-            message,
-            f"Error: {str(e)}"
-        )
-
-
 if __name__ == "__main__":
-
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 10000))
-    )
+                )
