@@ -2,47 +2,78 @@ import os
 import telebot
 import google.generativeai as genai
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+# Environment Variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-bot = telebot.TeleBot(BOT_TOKEN)
+# Validation
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable not found!")
 
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable not found!")
+
+# Gemini Setup
 genai.configure(api_key=GEMINI_API_KEY)
 
-model = genai.GenerativeModel("gemini-2.5-flash")
+try:
+    model = genai.GenerativeModel("gemini-2.5-flash")
+except Exception:
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
+# Telegram Bot
+bot = telebot.TeleBot(BOT_TOKEN)
 
 @bot.message_handler(commands=['start'])
 def start(message):
+    name = message.from_user.first_name or "Friend"
 
-    bot.reply_to(
-        message,
-        f"""👋 Hello {message.from_user.first_name}
+    welcome = f"""
+👋 Hello {name}
 
 Main tumhari AI Assistant hoon 💖
 
-Main:
-💻 Coding kar sakti hoon
-📝 Shayari likh sakti hoon
-💬 Chat kar sakti hoon
+✨ Main kya kar sakti hoon?
+
+💻 Coding
+📝 Shayari
+📚 Story Writing
+🤖 AI Chat
+🎨 Prompt Writing
+
+Bas mujhe message bhejo.
 """
-    )
 
-@bot.message_handler(func=lambda m: True)
-def chat(message):
+    bot.reply_to(message, welcome)
 
-    prompt = f"""
+@bot.message_handler(func=lambda message: True)
+def ai_chat(message):
+    try:
+        user_text = message.text.strip()
+
+        prompt = f"""
 Tum ek friendly female AI assistant ho.
 
-User:
-{message.text}
+User ka message:
+{user_text}
+
+Hindi aur English dono mein naturally jawab do.
 """
 
-    try:
         response = model.generate_content(prompt)
-        bot.reply_to(message, response.text)
+
+        answer = ""
+
+        if hasattr(response, "text") and response.text:
+            answer = response.text
+        else:
+            answer = "Sorry, mujhe response generate karne mein problem aa rahi hai."
+
+        bot.reply_to(message, answer)
 
     except Exception as e:
-        bot.reply_to(message, f"Error: {e}")
+        bot.reply_to(message, f"⚠ Error: {str(e)}")
 
-print("Bot Started...")
-bot.infinity_polling()
+print("✅ Bot Started Successfully")
+
+bot.infinity_polling(skip_pending=True)
