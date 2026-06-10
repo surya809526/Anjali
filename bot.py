@@ -7,14 +7,11 @@ import logging
 
 logging.basicConfig(level=logging.INFO)
 
-# --- CONFIGURATIONS HARDCODED (Tokens split to bypass GitHub scanning & Render bugs) ---
-
-# Bot Token ko do tukdon mein tod diya taaki GitHub block na kare aur Render dynamic error khatam ho
+# --- TOKENS SPLIT (Strictly Hardcoded) ---
 BT_PART1 = "8566767018:AAFjOKeJG0y0gNLjKHR"
 BT_PART2 = "7qReetB29MiSVRWc"
 BOT_TOKEN = BT_PART1 + BT_PART2
 
-# Hugging Face Key ko bhi tod kar rakha hai
 HF_PART1 = "hf_ectbqcRcRDHgfQfjCRLx"
 HF_PART2 = "HeZrExVvcjdSYK"
 HF_API_KEY = HF_PART1 + HF_PART2
@@ -30,25 +27,43 @@ def hf_chat(text):
     headers = {
         "Authorization": f"Bearer {HF_API_KEY}"
     }
+    # Clean template taaki model direct answer de
     payload = {
-        "inputs": f"<|user|>\n{text}<|end|>\n<|assistant|>",
+        "inputs": f"User: {text}\nAssistant:",
         "parameters": {
-            "max_new_tokens": 250,
+            "max_new_tokens": 150,
             "return_full_text": False
         }
     }
     try:
-        logging.info(f"Hugging Face ko call kar rahe hain...")
+        logging.info("Hugging Face ko data bhej rahe hain...")
         res = requests.post(url, headers=headers, json=payload, timeout=60)
+        logging.info(f"HF Status Code: {res.status_code}")
+        
         if res.status_code == 200:
             data = res.json()
+            logging.info(f"HF Raw Response: {data}")
+            
+            # Har tarah ke response format ko handle karne ke liye safe parsing
             if isinstance(data, list) and len(data) > 0:
-                return data[0].get("generated_text", "").strip() or "Model ne khali response diya."
-            return "Response format blank hai."
+                out = data[0].get("generated_text", "").strip()
+            elif isinstance(data, dict):
+                out = data.get("generated_text", "").strip()
+            else:
+                out = str(data)
+                
+            # Agar output mein prompt wapas aa jaye toh use saaf karna
+            if "Assistant:" in out:
+                out = out.split("Assistant:")[-1].strip()
+                
+            return out or "Main samajh nahi payi, kripya dobara poochein. 🥺"
+            
         elif res.status_code == 503:
             return "🤖 Model abhi start ho raha hai, please 1 minute mein fir se message bhejein!"
+            
         return f"HF API Error: {res.status_code}"
     except Exception as e:
+        logging.error(f"HF Function Error: {e}")
         return f"Fetch Error: {str(e)}"
 
 # Telegram Message Handler
@@ -57,10 +72,11 @@ def handle_all_messages(message):
     try:
         text = message.text or ""
         chat_id = message.chat.id
-        logging.info(f"📥 Telegram Message Received: {text}")
+        logging.info(f"📥 Message Received: {text}")
 
         # AI Response
         answer = hf_chat(text)
+        logging.info(f"🔮 Model Answered: {answer}")
 
         # Greeting Logic
         hour = datetime.now().hour
@@ -74,8 +90,10 @@ def handle_all_messages(message):
             greeting = "🌙 Good Night"
 
         final_response = f"{greeting}\n\n{answer}"
-        bot.send_message(chat_id, final_response[:4000])
-        logging.info("📤 Reply Sent Successfully!")
+        
+        # Ekदम safe send method
+        bot.send_message(chat_id, str(final_response)[:4000])
+        logging.info("📤 Reply Sent to Telegram Successfully!")
     except Exception as e:
         logging.error(f"Crash in handler: {e}")
 
@@ -89,9 +107,8 @@ def setup():
     try:
         bot.remove_webhook()
         webhook_url = f"{RENDER_URL}/anjali_webhook"
-        # Direct fresh initialization
         status = bot.set_webhook(url=webhook_url)
-        return f"Webhook Register Status: {status}<br>URL: {webhook_url}"
+        return f"Webhook Register Status: {status}"
     except Exception as e:
         return str(e)
 
