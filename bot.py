@@ -13,8 +13,7 @@ logging.basicConfig(
 
 # --- ENV VARIABLES ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
-HF_TOKEN = os.environ.get("HF_TOKEN")
-RENDER_URL = os.environ.get("RENDER_URL")  # e.g. https://anjali-bot.onrender.com
+RENDER_URL = os.environ.get("RENDER_URL")  # e.g. https://anjali-4-nv0n.onrender.com
 
 # --- INIT ---
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -23,44 +22,25 @@ app = Flask(__name__)
 # --- IST TIMEZONE ---
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# --- HUGGINGFACE CHAT FUNCTION ---
-HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
-HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
-
+# --- POLLINATIONS AI CHAT FUNCTION ---
 def hf_chat(user_message: str) -> str:
-    headers = {
-        "Authorization": f"Bearer {HF_TOKEN}",
-        "Content-Type": "application/json"
-    }
-
-    # Anjali ki personality
-    prompt = f"""<s>[INST] You are Anjali, a friendly and helpful AI assistant. You speak in a warm, polite manner. Answer helpfully and concisely.
-
-User: {user_message} [/INST]"""
-
-    payload = {
-        "inputs": prompt,
-        "parameters": {
-            "max_new_tokens": 300,
-            "temperature": 0.7,
-            "return_full_text": False
-        }
-    }
-
     try:
-        response = requests.post(HF_API_URL, headers=headers, json=payload, timeout=30)
-        result = response.json()
+        system = "You are Anjali, a friendly and helpful AI assistant. Speak warmly and concisely."
+        prompt = f"{system}\n\nUser: {user_message}\nAnjali:"
 
-        if isinstance(result, list) and len(result) > 0:
-            return result[0].get("generated_text", "").strip()
-        elif isinstance(result, dict) and "error" in result:
-            logging.error(f"HF API Error: {result['error']}")
-            return "Abhi thoda busy hoon, thodi der baad try karo! 🙏"
+        encoded = requests.utils.quote(prompt)
+        url = f"https://text.pollinations.ai/{encoded}"
+
+        response = requests.get(url, timeout=30)
+
+        if response.status_code == 200:
+            return response.text.strip()
         else:
+            logging.error(f"Pollinations Error: {response.status_code}")
             return "Kuch samajh nahi aaya, dobara poochho! 😊"
 
     except requests.exceptions.Timeout:
-        logging.error("HF API Timeout!")
+        logging.error("Pollinations Timeout!")
         return "Response aane mein thoda time lag raha hai, retry karo! ⏳"
     except Exception as e:
         logging.error(f"hf_chat Error: {e}")
