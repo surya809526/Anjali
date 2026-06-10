@@ -1,85 +1,83 @@
 import os
-from datetime import datetime
-from flask import Flask, request
+import logging
 import telebot
 import requests
-import logging
+from flask import Flask, request
+from datetime import datetime, timezone, timedelta
 
-logging.basicConfig(level=logging.INFO)
+# --- LOGGING SETUP ---
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
-# --- TOKENS SPLIT (Strictly Hardcoded) ---
-BT_PART1 = "8566767018:AAFjOKeJG0y0gNLjKHR"
-BT_PART2 = "7qReetB29MiSVRWc"
-BOT_TOKEN = BT_PART1 + BT_PART2
+# --- ENV VARIABLES ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+HF_TOKEN = os.environ.get("HF_TOKEN")
+RENDER_URL = os.environ.get("RENDER_URL")  # e.g. https://anjali-bot.onrender.com
 
-HF_PART1 = "hf_ectbqcRcRDHgfQfjCRLx"
-HF_PART2 = "HeZrExVvcjdSYK"
-HF_API_KEY = HF_PART1 + HF_PART2
-
-RENDER_URL = "https://anjali-4-nv0n.onrender.com"
-
+# --- INIT ---
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
-# Hugging Face Chat Function
-def hf_chat(text):
-    url = "https://router.huggingface.co/hf-inference/models/microsoft/Phi-3-mini-4k-instruct"
+# --- IST TIMEZONE ---
+IST = timezone(timedelta(hours=5, minutes=30))
+
+# --- HUGGINGFACE CHAT FUNCTION ---
+HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+
+def hf_chat(user_message: str) -> str:
     headers = {
-        "Authorization": f"Bearer {HF_API_KEY}"
+        "Authorization": f"Bearer {HF_TOKEN}",
+        "Content-Type": "application/json"
     }
-    # Clean template taaki model direct answer de
+
+    # Anjali ki personality
+    prompt = f"""<s>[INST] You are Anjali, a friendly and helpful AI assistant. You speak in a warm, polite manner. Answer helpfully and concisely.
+
+User: {user_message} [/INST]"""
+
     payload = {
-        "inputs": f"User: {text}\nAssistant:",
+        "inputs": prompt,
         "parameters": {
-            "max_new_tokens": 150,
+            "max_new_tokens": 300,
+            "temperature": 0.7,
             "return_full_text": False
         }
     }
-    try:
-        logging.info("Hugging Face ko data bhej rahe hain...")
-        res = requests.post(url, headers=headers, json=payload, timeout=60)
-        logging.info(f"HF Status Code: {res.status_code}")
-        
-        if res.status_code == 200:
-            data = res.json()
-            logging.info(f"HF Raw Response: {data}")
-            
-            # Har tarah ke response format ko handle karne ke liye safe parsing
-            if isinstance(data, list) and len(data) > 0:
-                out = data[0].get("generated_text", "").strip()
-            elif isinstance(data, dict):
-                out = data.get("generated_text", "").strip()
-            else:
-                out = str(data)
-                
-            # Agar output mein prompt wapas aa jaye toh use saaf karna
-            if "Assistant:" in out:
-                out = out.split("Assistant:")[-1].strip()
-                
-            return out or "Main samajh nahi payi, kripya dobara poochein. 🥺"
-            
-        elif res.status_code == 503:
-            return "🤖 Model abhi start ho raha hai, please 1 minute mein fir se message bhejein!"
-            
-        return f"HF API Error: {res.status_code}"
-    except Exception as e:
-        logging.error(f"HF Function Error: {e}")
-        return f"Fetch Error: {str(e)}"
 
-# Telegram Message Handler
-@bot.message_handler(func=lambda message: True)
-def handle_all_messages(message):
     try:
-        text = message.text or ""
-        chat_id = message.chat.id
+        response = requests.post(HF_API_URL, headers=headers, json=payload, timeout=30)
+        result = response.json()
+
+        if isinstance(result, list) and len(result) > 0:
+            return result[0].get("generated_text", "").strip()
+        elif isinstance(result, dict) and "error" in result:
+            logging.error(f"HF API Error: {result['error']}")
+            return "Abhi thoda busy hoon, thodi der baad try karo! 🙏"
+        else:
+            return "Kuch samajh nahi aaya, dobara poochho! 😊"
+
+    except requests.exceptions.Timeout:
+        logging.error("HF API Timeout!")
+        return "Response aane mein thoda time lag raha hai, retry karo! ⏳"
+    except Exception as e:
+        logging.error(f"hf_chat Error: {e}")
+        return "Kuch technical issue aa gaya, baad mein try karo! 🔧"
+
+
+# --- MESSAGE HANDLER ---
+def handle_message(chat_id: int, text: str):
+    try:
         logging.info(f"📥 Message Received: {text}")
 
         # AI Response
         answer = hf_chat(text)
         logging.info(f"🔮 Model Answered: {answer}")
 
-        # Greeting Logic
-        hour = datetime.now().hour
+        # Greeting Logic (IST time)
+        hour = datetime.now(IST).hour
         if hour < 12:
             greeting = "🌅 Good Morning"
         elif hour < 17:
@@ -89,18 +87,25 @@ def handle_all_messages(message):
         else:
             greeting = "🌙 Good Night"
 
-        final_response = f"{greeting}\n\n{answer}"
-        
-        # Ekदम safe send method
+        final_response = f"{greeting}!\n\n{answer}"
+
+        # Safe send
         bot.send_message(chat_id, str(final_response)[:4000])
         logging.info("📤 Reply Sent to Telegram Successfully!")
-    except Exception as e:
-        logging.error(f"Crash in handler: {e}")
 
-# --- FLASK WEBHOOK ROUTES ---
+    except Exception as e:
+        logging.error(f"Crash in handle_message: {e}")
+        try:
+            bot.send_message(chat_id, "Oops! Kuch gadbad ho gayi. Dobara try karo 🙏")
+        except:
+            pass
+
+
+# --- FLASK ROUTES ---
 @app.route("/")
 def home():
     return "Anjali AI Bot Server is Running! ❤️"
+
 
 @app.route("/setup")
 def setup():
@@ -108,18 +113,33 @@ def setup():
         bot.remove_webhook()
         webhook_url = f"{RENDER_URL}/anjali_webhook"
         status = bot.set_webhook(url=webhook_url)
-        return f"Webhook Register Status: {status}"
+        return f"Webhook Register Status: {status} ✅"
     except Exception as e:
-        return str(e)
+        return f"Setup Error: {str(e)}"
+
 
 @app.route("/anjali_webhook", methods=["POST"])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "OK", 200
-    return "Forbidden", 403
+    try:
+        json_data = request.get_json(force=True)
+        if not json_data:
+            return "No data", 400
 
+        update = telebot.types.Update.de_json(json_data)
+
+        if update.message and update.message.text:
+            chat_id = update.message.chat.id
+            text = update.message.text.strip()
+            handle_message(chat_id, text)
+
+        return "OK", 200
+
+    except Exception as e:
+        logging.error(f"Webhook Error: {e}")
+        return "Error", 500
+
+
+# --- MAIN ---
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
