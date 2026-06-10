@@ -1,32 +1,21 @@
 import os
 import io
+from datetime import datetime
 import requests
 from flask import Flask, request
 import telebot
 import google.generativeai as genai
 
-# =========================
-# ENV VARIABLES
-# =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 HF_API_KEY = os.getenv("HF_API_KEY")
 RENDER_URL = os.getenv("RENDER_URL")
 
-# =========================
-# TELEGRAM BOT
-# =========================
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# =========================
-# GEMINI
-# =========================
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("gemini-2.5-flash")
 
-# =========================
-# FLASK APP
-# =========================
 app = Flask(__name__)
 
 @app.route("/")
@@ -35,48 +24,53 @@ def home():
 
 @app.route("/setup")
 def setup():
-    try:
-        bot.remove_webhook()
 
-        webhook_url = f"{RENDER_URL}/webhook"
+    webhook_url = f"{RENDER_URL}/webhook"
 
-        bot.set_webhook(url=webhook_url)
+    bot.remove_webhook()
+    bot.set_webhook(url=webhook_url)
 
-        commands = [
-            telebot.types.BotCommand("start", "Start Bot"),
-            telebot.types.BotCommand("imagine", "Generate AI Image"),
-            telebot.types.BotCommand("profile", "View Profile"),
-            telebot.types.BotCommand("plan", "Premium Plan")
-        ]
+    commands = [
+        telebot.types.BotCommand("start", "Start Bot"),
+        telebot.types.BotCommand("imagine", "Generate AI Image"),
+        telebot.types.BotCommand("profile", "Profile"),
+    ]
 
-        bot.set_my_commands(commands)
+    bot.set_my_commands(commands)
 
-        return f"Webhook Set Successfully<br>{webhook_url}"
-
-    except Exception as e:
-        return str(e)
+    return f"Webhook Set Successfully: {webhook_url}"
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    try:
-        json_str = request.get_data().decode("utf-8")
-        update = telebot.types.Update.de_json(json_str)
-        bot.process_new_updates([update])
-        return "OK", 200
-    except Exception as e:
-        print("WEBHOOK ERROR:", e)
-        return "ERROR", 500
 
-# =========================
-# START
-# =========================
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+
+    bot.process_new_updates([update])
+
+    return "OK", 200
+
+
 @bot.message_handler(commands=["start"])
 def start(message):
 
-    text = f"""
-👋 Hello {message.from_user.first_name}
+    hour = datetime.now().hour
 
-💖 Main Anjali hoon
+    if hour < 12:
+        greeting = "🌅 Good Morning"
+    elif hour < 17:
+        greeting = "☀️ Good Afternoon"
+    elif hour < 21:
+        greeting = "🌇 Good Evening"
+    else:
+        greeting = "🌙 Good Night"
+
+    bot.reply_to(
+        message,
+        f"""
+{greeting} {message.from_user.first_name} ❤️
+
+Main Anjali hoon 💖
 
 💻 Coding Help
 📝 Shayari
@@ -86,39 +80,22 @@ def start(message):
 
 Mujhse baat karo 😊
 """
+    )
 
-    bot.reply_to(message, text)
-
-# =========================
-# PROFILE
-# =========================
 @bot.message_handler(commands=["profile"])
 def profile(message):
 
-    text = f"""
-👤 Name: {message.from_user.first_name}
-
-🆔 User ID: {message.from_user.id}
-
-🤖 Plan: Free
-"""
-
-    bot.reply_to(message, text)
-
-# =========================
-# PLAN
-# =========================
-@bot.message_handler(commands=["plan"])
-def plan(message):
-
     bot.reply_to(
         message,
-        "💎 Premium Plan Coming Soon!"
+        f"""
+👤 Name: {message.from_user.first_name}
+
+🆔 ID: {message.from_user.id}
+
+💎 Plan: Free
+"""
     )
 
-# =========================
-# IMAGE GENERATION
-# =========================
 @bot.message_handler(commands=["imagine"])
 def imagine(message):
 
@@ -127,21 +104,19 @@ def imagine(message):
     if not prompt:
         bot.reply_to(
             message,
-            "🎨 Example:\n/imagine cinematic horse riding scene"
+            "Example:\n/imagine cinematic horse riding scene"
         )
         return
 
-    wait_msg = bot.reply_to(
-        message,
-        "🎨 Image bana rahi hoon..."
-    )
-
     try:
 
-        HF_URL = "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0"
+        bot.reply_to(
+            message,
+            "🎨 Image bana rahi hoon..."
+        )
 
         response = requests.post(
-            HF_URL,
+            "https://router.huggingface.co/hf-inference/models/stabilityai/stable-diffusion-xl-base-1.0",
             headers={
                 "Authorization": f"Bearer {HF_API_KEY}"
             },
@@ -154,38 +129,49 @@ def imagine(message):
         if response.status_code == 200:
 
             image = io.BytesIO(response.content)
-            image.name = "anjali.png"
+            image.name = "image.png"
 
             bot.send_photo(
                 message.chat.id,
                 image,
-                caption=f"✨ Prompt:\n{prompt}"
+                caption=f"✨ Prompt: {prompt}"
             )
 
         else:
 
             bot.reply_to(
                 message,
-                f"⚠️ HF Error: {response.status_code}"
+                f"HF Error: {response.status_code}"
             )
 
     except Exception as e:
 
         bot.reply_to(
             message,
-            f"⚠️ Error:\n{e}"
+            str(e)
         )
 
-# =========================
-# AI CHAT
-# =========================
 @bot.message_handler(func=lambda m: True)
 def chat(message):
 
     try:
 
+        hour = datetime.now().hour
+
+        if hour < 12:
+            greet = "Good Morning"
+        elif hour < 17:
+            greet = "Good Afternoon"
+        elif hour < 21:
+            greet = "Good Evening"
+        else:
+            greet = "Good Night"
+
         prompt = f"""
-Tum Anjali naam ki friendly female AI assistant ho.
+You are Anjali, a friendly female AI assistant.
+
+First greet the user with:
+{greet}
 
 User:
 {message.text}
@@ -196,7 +182,7 @@ User:
         answer = getattr(
             response,
             "text",
-            "Mujhe jawab nahi mila."
+            "No response generated."
         )
 
         bot.reply_to(
@@ -208,14 +194,11 @@ User:
 
         bot.reply_to(
             message,
-            f"⚠️ Error:\n{e}"
+            f"Error: {e}"
         )
 
-# =========================
-# MAIN
-# =========================
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 10000))
-        )
+    )
