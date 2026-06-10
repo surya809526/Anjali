@@ -1,128 +1,189 @@
 import os
 import io
-import logging
 import requests
 from flask import Flask, request
 import telebot
 import google.generativeai as genai
 
-# Logging setup for Render logs
-logging.basicConfig(level=logging.INFO)
+# Environment Variables
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+HF_API_KEY = os.getenv("HF_API_KEY")
+RENDER_URL = os.getenv("RENDER_URL")
 
-# --- CONFIGURATIONS HARDCODED (HF API split to bypass GitHub scanning) ---
-BOT_TOKEN = "8566767018:AAFjOKeJG0y0gNLjKHR7qReetB29MiSVRWc"
-GEMINI_API_KEY = "AIzaSyDG4RvlLGgqYTerYGInGlEUa3lPkz4UAak"
-
-# Hugging Face Key ko do tukdon mein tod diya taaki GitHub block na kare
-HF_PART1 = "hf_ectbqcRcRDHgfQfjCRLx"
-HF_PART2 = "HeZrExVvcjdSYK"
-HF_API_KEY = HF_PART1 + HF_PART2  # Code run hote hi dono jud jayenge
-
-RENDER_URL = "https://anjali-2-cvcf.onrender.com"
-
-# Gemini Setup
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-1.5-flash")
-
-# Hugging Face Setup (For AI Images)
-HF_API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-
-# Telegram Bot Instance
+# Telegram
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# Flask App
+# Gemini
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-2.5-flash")
+
+# Hugging Face Image API
+HF_IMAGE_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
+HF_HEADERS = {
+    "Authorization": f"Bearer {HF_API_KEY}"
+}
+
 app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Anjali AI Bot Running Perfectly! ❤️"
+    return "Anjali AI Bot Running ❤️"
 
-# Webhook and Menu Setup
 @app.route("/setup")
 def setup():
-    try:
-        bot.remove_webhook()
-        webhook_url = f"{RENDER_URL}/webhook"
-        bot.set_webhook(url=webhook_url)
-        
-        commands = [
-            telebot.types.BotCommand("start", "Anjali ko start karein 🚀"),
-            telebot.types.BotCommand("imagine", "AI Images generate karein 🎨"),
-            telebot.types.BotCommand("profile", "Apna profile dekhein 👤"),
-            telebot.types.BotCommand("daily", "Claim Daily Coins 🎁"),
-            telebot.types.BotCommand("plan", "Get Unlimited Chat 💎")
-        ]
-        bot.set_my_commands(commands)
-        
-        return f"Webhook and Menu Commands Set Successfully!<br>{webhook_url}"
-    except Exception as e:
-        return str(e)
+    webhook_url = f"{RENDER_URL}/webhook"
 
-# Webhook Endpoint
+    bot.remove_webhook()
+    bot.set_webhook(url=webhook_url)
+
+    commands = [
+        telebot.types.BotCommand("start", "Start Bot"),
+        telebot.types.BotCommand("help", "Help"),
+        telebot.types.BotCommand("imagine", "Generate AI Image")
+    ]
+
+    bot.set_my_commands(commands)
+
+    return f"Webhook Set: {webhook_url}"
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "OK", 200
-    else:
-        return "Unsupported Media Type", 403
 
-# --- TELEGRAM BOT HANDLERS ---
+    update = telebot.types.Update.de_json(
+        request.get_data().decode("utf-8")
+    )
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    welcome_text = """👋 Hello!
+    if update.message:
+
+        chat_id = update.message.chat.id
+        text = update.message.text or ""
+
+        try:
+
+            # START
+            if text == "/start":
+
+                bot.send_message(
+                    chat_id,
+                    """
+👋 Hello!
 
 Main Anjali hoon 💖
 
-✨ Main kya kar sakti hoon?
 💻 Coding Help
 📝 Shayari
-🎨 AI Image Generation (/imagine)
+📚 Story
+🎨 AI Images
 🤖 AI Chat
 
-Bataiye, aaj main aapki kya madad karoon? 😊"""
-    bot.reply_to(message, welcome_text)
+Mujhse baat karo 😊
+"""
+                )
 
-@bot.message_handler(commands=['imagine'])
-def generate_image(message):
-    prompt = message.text.replace('/imagine', '').strip()
-    if not prompt:
-        bot.reply_to(message, "Bhai, prompt toh do! Jaise: `/imagine a beautiful cinematic sunset` 🥺")
-        return
-    
-    status_msg = bot.reply_to(message, "Anjali aapke liye image generate kar rahi hai... Please thoda wait karein 🎨✨")
-    
-    try:
-        response = requests.post(HF_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
-        if response.status_code == 200:
-            image_bytes = response.content
-            image_file = io.BytesIO(image_bytes)
-            image_file.name = 'anjali_generation.png'
-            bot.send_photo(message.chat.id, image_file, caption=f"Aapki image taiyar hai! ✨\nPrompt: {prompt}")
-            bot.delete_message(message.chat.id, status_msg.message_id)
-        else:
-            bot.edit_message_text("Oops! Image generate nahi ho payi. Ek baar phir se try karenge? 💔", message.chat.id, status_msg.message_id)
-    except Exception as e:
-        logging.error(f"Error in Imagine: {e}")
-        bot.edit_message_text("Kuch toh gadbad hui image banane mein.", message.chat.id, status_msg.message_id)
+            # HELP
+            elif text == "/help":
 
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    text = message.text or ""
-    chat_id = message.chat.id
-    
-    prompt = f"Tum Anjali naam ki ek friendly female AI assistant ho. Hindi aur English dono mein short, respectful aur useful replies do.\nUser: {text}"
-    try:
-        response = model.generate_content(prompt)
-        answer = getattr(response, "text", "Response generate nahi hua.")
-        bot.send_message(chat_id, answer[:4000])
-    except Exception as e:
-        logging.error(f"Error in Gemini Chat: {e}")
-        bot.send_message(chat_id, "Sorry, thoda network issue hai. Ek baar phir se boliye na? 🥺")
+                bot.send_message(
+                    chat_id,
+                    """
+Commands:
+
+/start
+/help
+/imagine prompt
+"""
+                )
+
+            # IMAGE
+            elif text.startswith("/imagine"):
+
+                prompt = text.replace(
+                    "/imagine",
+                    ""
+                ).strip()
+
+                if not prompt:
+                    bot.send_message(
+                        chat_id,
+                        "Prompt do 😊"
+                    )
+
+                else:
+
+                    bot.send_message(
+                        chat_id,
+                        "🎨 Image bana rahi hoon..."
+                    )
+
+                    response = requests.post(
+                        HF_IMAGE_URL,
+                        headers=HF_HEADERS,
+                        json={"inputs": prompt},
+                        timeout=120
+                    )
+
+                    if response.status_code == 200:
+
+                        image = io.BytesIO(
+                            response.content
+                        )
+
+                        image.name = "image.png"
+
+                        bot.send_photo(
+                            chat_id,
+                            image
+                        )
+
+                    else:
+
+                        bot.send_message(
+                            chat_id,
+                            "Image generate nahi hui."
+                        )
+
+            # GEMINI CHAT
+            else:
+
+                prompt = f"""
+Tum Anjali naam ki friendly female AI assistant ho.
+
+Hindi aur English dono mein baat karo.
+
+User:
+{text}
+"""
+
+                response = model.generate_content(
+                    prompt
+                )
+
+                answer = getattr(
+                    response,
+                    "text",
+                    "No response"
+                )
+
+                bot.send_message(
+                    chat_id,
+                    answer[:4000]
+                )
+
+        except Exception as e:
+
+            print("ERROR:", e)
+
+            bot.send_message(
+                chat_id,
+                f"⚠️ {e}"
+            )
+
+    return "OK", 200
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 10000))
+    )
