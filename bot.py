@@ -2,10 +2,17 @@ import os
 from datetime import datetime
 from flask import Flask, request
 import telebot
+import google.generativeai as genai
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+RENDER_URL = os.getenv("RENDER_URL")
 
 bot = telebot.TeleBot(BOT_TOKEN)
+
+genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel("gemini-2.5-flash")
+
 app = Flask(__name__)
 
 @app.route("/")
@@ -15,15 +22,14 @@ def home():
 @app.route("/setup")
 def setup():
 
-    webhook_url = f"{os.getenv('RENDER_URL')}/webhook"
+    webhook_url = f"{RENDER_URL}/webhook"
 
     bot.remove_webhook()
     bot.set_webhook(url=webhook_url)
 
     commands = [
         telebot.types.BotCommand("start", "Start Bot"),
-        telebot.types.BotCommand("profile", "Profile"),
-        telebot.types.BotCommand("help", "Help")
+        telebot.types.BotCommand("help", "Help"),
     ]
 
     bot.set_my_commands(commands)
@@ -44,8 +50,6 @@ def webhook():
             chat_id = update.message.chat.id
             text = update.message.text or ""
 
-            print("MESSAGE:", text)
-
             if text == "/start":
 
                 hour = datetime.now().hour
@@ -61,8 +65,7 @@ def webhook():
 
                 bot.send_message(
                     chat_id,
-                    f"""
-{greeting} ❤️
+                    f"""{greeting} {update.message.from_user.first_name} ❤️
 
 Main Anjali hoon 💖
 
@@ -71,42 +74,34 @@ Main Anjali hoon 💖
 📖 Story Writing
 🤖 AI Chat
 
-Mujhse baat karo 😊
-"""
-                )
-
-            elif text == "/profile":
-
-                bot.send_message(
-                    chat_id,
-                    f"""
-👤 Name: {update.message.from_user.first_name}
-
-🆔 ID: {update.message.from_user.id}
-
-💎 Plan: Free
-"""
-                )
-
-            elif text == "/help":
-
-                bot.send_message(
-                    chat_id,
-                    """
-📌 Available Commands
-
-/start
-/profile
-/help
-"""
+Mujhse baat karo 😊"""
                 )
 
             else:
 
-                # Simple reply test
+                prompt = f"""
+Tum Anjali naam ki friendly female AI assistant ho.
+
+Tum:
+- Coding karti ho
+- Shayari likhti ho
+- Stories likhti ho
+- Hindi aur English dono samajhti ho
+
+User: {text}
+"""
+
+                response = model.generate_content(prompt)
+
+                answer = getattr(
+                    response,
+                    "text",
+                    "Sorry, mujhe response nahi mila."
+                )
+
                 bot.send_message(
                     chat_id,
-                    f"🤖 Tumne kaha:\n{text}"
+                    answer[:4000]
                 )
 
         return "OK", 200
@@ -114,11 +109,10 @@ Mujhse baat karo 😊
     except Exception as e:
 
         print("ERROR:", str(e))
-
         return "ERROR", 500
 
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
         port=int(os.environ.get("PORT", 10000))
-                )
+        )
