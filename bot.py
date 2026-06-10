@@ -14,6 +14,7 @@ logging.basicConfig(
 # --- ENV VARIABLES ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 RENDER_URL = os.environ.get("RENDER_URL")  # e.g. https://anjali-4-nv0n.onrender.com
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 # --- INIT ---
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -22,25 +23,47 @@ app = Flask(__name__)
 # --- IST TIMEZONE ---
 IST = timezone(timedelta(hours=5, minutes=30))
 
-# --- POLLINATIONS AI CHAT FUNCTION ---
+# --- GROQ AI CHAT FUNCTION ---
 def hf_chat(user_message: str) -> str:
     try:
-        system = "You are Anjali, a friendly and helpful AI assistant. Speak warmly and concisely."
-        prompt = f"{system}\n\nUser: {user_message}\nAnjali:"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
 
-        encoded = requests.utils.quote(prompt)
-        url = f"https://text.pollinations.ai/{encoded}"
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are Anjali, a friendly and helpful AI assistant. You speak in a warm, polite manner. Answer helpfully and concisely."
+                },
+                {
+                    "role": "user",
+                    "content": user_message
+                }
+            ],
+            "max_tokens": 500,
+            "temperature": 0.7
+        }
 
-        response = requests.get(url, timeout=30)
+        response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+
+        result = response.json()
 
         if response.status_code == 200:
-            return response.text.strip()
+            return result["choices"][0]["message"]["content"].strip()
         else:
-            logging.error(f"Pollinations Error: {response.status_code}")
+            logging.error(f"Groq Error: {result}")
             return "Kuch samajh nahi aaya, dobara poochho! 😊"
 
     except requests.exceptions.Timeout:
-        logging.error("Pollinations Timeout!")
+        logging.error("Groq API Timeout!")
         return "Response aane mein thoda time lag raha hai, retry karo! ⏳"
     except Exception as e:
         logging.error(f"hf_chat Error: {e}")
